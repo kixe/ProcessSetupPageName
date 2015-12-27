@@ -219,7 +219,7 @@ class ProcessSetupPageName extends Pages implements Module {
 	 * 
 	 * @param string $pageName
 	 * @param int $parentId for local search, default global search
-	 * @return array of existing Page Names matching $pageName with appendix -n
+	 * @return array of Page names in use matching $pageName with integer appendix -n
 	 * 
 	 */
 	public function getSameNameArray($pageName, $parentId = 0) {
