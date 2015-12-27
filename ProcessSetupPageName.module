@@ -21,9 +21,9 @@ class ProcessSetupPageName extends Pages implements Module {
 
 	public static function getModuleInfo() {
 		return array(
-			'title' => __('Name Format Children'), 
+			'title' => __('Setup Page Name'), 
 			'version' => 108, 
-			'summary' => __('Overwrites setupPageNames() function in core module pages. Provides more Options'),
+			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings. [More](https://processwire.com/talk/topic/8576-name-format-children/?p=108748)"),
 			'author' => 'kixe',
 			'singular' => true,
 			'autoload' => true, 
@@ -48,7 +48,7 @@ class ProcessSetupPageName extends Pages implements Module {
 		$this->addHookBefore('Pages::setupPageName', function($event) {
 			$page = $event->arguments[0];
 			$options = count($event->arguments)==2?$event->arguments[1]:array();
-			$name = wire('modules')->get('ProcessNameFormatChildren')->SetupPageName($page, $options);
+			$name = wire('modules')->get('ProcessSetupPageName')->SetupPageName($page, $options);
 			$event->replace = true;
     		$event->return = $name;
 		});
@@ -146,7 +146,6 @@ class ProcessSetupPageName extends Pages implements Module {
 	 * 	- format: Optionally specify the format to use, or leave blank to auto-determine. Use title if set or datetime string
 	 * 
 	 * @return string If a name was generated it is returned. If no name was generated blank is returned.
-	 * @todo @Ryan take this function as is over in core
 	 * 
 	 */
 	public function ___SetupPageName(Page $page, array $options = array()) {
