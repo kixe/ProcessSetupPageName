@@ -1,0 +1,257 @@
+<?php
+
+/**
+ * 
+ * made by kixe (Christoph Thelen) 15.12.15
+ * Licensed under GNU/GPL v3
+ * 
+ * ProcessWire 2.x 
+ * Copyright (C) 2015 by Ryan Cramer 
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ * 
+ * http://processwire.com
+ *
+ * @todo add configuration how to handle datetime fields.
+ * workaround: We convert the unformatted timestamp to Y-m-d.
+ * get() doesn't respect Output Format Settings in DateTime field. Why?
+ *
+ */
+
+class ProcessSetupPageName extends Pages implements Module {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => __('Name Format Children'), 
+			'version' => 108, 
+			'summary' => __('Overwrites setupPageNames() function in core module pages. Provides more Options'),
+			'author' => 'kixe',
+			'singular' => true,
+			'autoload' => true, 
+			);
+	}
+
+	/**
+	 * constructor expected by PW 3.x
+	 * thanks to Adrian
+	 *
+	 */
+	public function __construct() {
+	    // intentionally empty
+	}
+
+	/**
+	 * add Hooks to Pages::setupPageName, ProcessTemplate::buildEditForm and InputfieldPageTable::getConfigInputfields
+	 * 
+	 *
+	 */
+	public function init() {
+		$this->addHookBefore('Pages::setupPageName', function($event) {
+			$page = $event->arguments[0];
+			$options = count($event->arguments)==2?$event->arguments[1]:array();
+			$name = wire('modules')->get('ProcessNameFormatChildren')->SetupPageName($page, $options);
+			$event->replace = true;
+    		$event->return = $name;
+		});
+		$this->notes = _('Leave blank to disable. Enter any fieldname, subfield, property or date() function separated by space. Dot syntax allowed. Example: &quot;parent.title date(Y) myfield&quot; (without quotes) will auto-generate the name from the title of page parent, the current year and the value of pagefield &quot;myfield&quot; [More](https://processwire.com/talk/topic/8576-name-format-children/?p=108748)');	
+		$this->addHookAfter('ProcessTemplate::buildEditForm', function($event) {
+			$return = $event->return;
+			$return->children()->get(2)->children()->first()->children()->get('childNameFormat')->set('notes',$this->notes);
+			$event->return = $return;
+		});
+		if (wire('modules')->isInstalled('InputfieldPageTable')) {
+			$this->addHookAfter('InputfieldPageTable::getConfigInputfields', function($event) {
+				$return = $event->return;
+				$return->children()->get('nameFormat')->set('notes',$this->notes);
+				$event->return = $return;
+			});
+		}
+	}
+
+	/**
+	 * create a page name based on 'Name Format Children' in settings of parent page template
+	 * 
+	 * @param Page $page
+	 * @param string $format use dot syntax if value has subfields or is an object
+	 * 
+	 * @return string/ bool If a name was generated it is returned. false in case of error or warning
+	 */
+	public function createFromFormat(Page $page, $format) {
+
+		$error = false;
+		$warning = false;
+		$pageName = '';
+
+		// case 1: multiple fields
+		if (strpos($format,' ')) {
+			// space not allowed in name so we can use it as separator
+			$formats = explode(' ',$format);
+			foreach ($formats as $_format) {
+				$_pageName = $this->createFromFormat($page, $_format); 
+				if ($_pageName == false) return false;
+				$pageName .= '-'.$_pageName;
+			}
+		}
+
+		// case 2: title default
+		else if ($format == 'title' && strlen($page->title)) $pageName .= '-'.$page->title;
+			
+		// case 3: date()
+		else if (strpos($format, 'date(') === 0 ) {
+			if (preg_match('/(date\()([^()]+)(\))/',$format,$matches)) $date = date($matches[2]);
+			if (!$date) {
+				$error = true;
+			} else $pageName .= '-'.$date;
+
+		// case 4: string could be determined with $page->get() we take this
+		} else if (strlen($page->get($format))) {
+			$value = $page->get($format);
+			if (is_int($value) && wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
+				// for now we convert timestamp in a specific format, later we add this to module settings
+				$value = date('y-m-d',$value);
+			} 
+			$pageName .= '-'.$value;
+		}
+
+		// case 5: check if field exists, set flag for warning or error and return false
+		else {
+			$_format = strpos($format,'.')?strstr($format,'.',true):$format;
+			if($page->template->hasField($_format)) {
+				if (strpos($page->name, $this->untitledPageName) === 0) $warning = true;
+			} else $error = true;
+		}				
+
+		// output warning or error
+		$format_error = __("Syntax Error: 'Name Format Children' in settings of template '%s' (%s)");
+		if ($error === true) $this->error(sprintf($format_error, $page->parent->template->name, $format));
+		$format_warning = __("Pagename '%s' will switch if value of field '%s' is populated!");
+		if ($warning === true) $this->warning(sprintf($format_warning, $page->name, $format));
+
+		if (!$error && !$warning) return ltrim($pageName,'-');
+		return false;
+
+	}
+
+
+	/**
+	 * Overwrites same function in Core Class Pages
+	 * Auto-assign a page name to this page
+	 * 
+	 * Typically this would be used only if page had no name or if it had a temporary untitled name.
+	 * 
+	 * Page will be populated with the name given. This method will not populate names to pages that
+	 * already have a name, unless the name is "untitled"
+	 * 
+	 * @param Page $page
+	 * @param array $options 
+	 * 	- format: Optionally specify the format to use, or leave blank to auto-determine. Use title if set or datetime string
+	 * 
+	 * @return string If a name was generated it is returned. If no name was generated blank is returned.
+	 * @todo @Ryan take this function as is over in core
+	 * 
+	 */
+	public function ___SetupPageName(Page $page, array $options = array()) {
+
+		$defaults = array(
+			'format' => '', 
+			);
+		$options = array_merge($defaults, $options); 
+		$format = $options['format']; 
+		
+		if(strlen($page->name)) {
+			// make sure page starts with "untitled" or "untitled-"
+			if($page->name != $this->untitledPageName && strpos($page->name, "$this->untitledPageName-") !== 0) {
+				// page already has a name and it's not a temporary/untitled one
+				// so we do nothing
+				return '';
+			}
+			// page starts with our untitled name, but is it in the exact format we use?
+			if($page->name != $this->untitledPageName) {
+				$parts = explode('-', $page->name);
+				array_shift($parts); // shift off 'untitled';
+				$parts = implode('', $parts); // put remaining back together
+				// if we were left with something other than digits, 
+				// this is not an auto-generated name, so leave as-is
+				if(!ctype_digit($parts)) return '';
+			}
+		}
+
+		if(!strlen($format)) $format = $page->parent()->template->childNameFormat;
+		if(!strlen($format)) {
+			if(strlen($page->title)) {
+				// default format is title
+				$format = 'title';
+			} else {
+				// if page has no title, default format is date
+				$format = 'Y-m-d H:i:s';
+			}
+		}
+		
+		$pageName = '';
+		
+		// childNameFormat is set
+		if (strlen($format)) {
+			$pageName = $this->createFromFormat($page,$format);
+			if ($pageName == false) $pageName = $this->untitledPageName;
+		}
+
+		else if (strlen($page->title)) $pageName = $page->title;
+
+		else {
+			// no name will be assigned
+			$pageName = '';
+		}
+		
+		if($pageName == $this->untitledPageName && strpos($page->name, $this->untitledPageName) === 0) {
+			// page already has untitled name, and there's no need to re-assign the untitled name
+			return '';
+		}
+
+		if (strlen($pageName)) {
+			$pageName = $this->wire('sanitizer')->pageName($pageName, Sanitizer::translate);
+			$page->name = $this->makeUnique($pageName);
+			$page->set('_hasAutogenName', true); // for savePageQuery, provides adjustName behavior for new pages		
+			return $page->name;
+		}
+		return '';
+	}
+
+	/**
+	 * 
+	 * @param string $pageName
+	 * @param int $parentId for local search, default global search
+	 * @return array of existing Page Names matching $pageName with appendix -n
+	 * 
+	 */
+	public function getSameNameArray($pageName, $parentId = 0) {
+		$local = ($parentId && is_int($parentId))?" parent_id = $parentId AND":'';
+		$sql = "SELECT name FROM pages WHERE$local name REGEXP '^($pageName)(-([[:digit:]]+))?$'";
+		$query = wire('database')->prepare($sql);
+		$result = $this->executeQuery($query);
+		if (!$result) return false;
+		return $query->fetchAll(PDO::FETCH_COLUMN);
+	}
+
+	/**
+	 * create a unique (local or global) name with -n appendix
+	 * index -n will be highest index of similar named pages +1
+	 * 
+	 * @param string $pageName
+	 * @param int $parentId (uniquify locally under this parent)
+	 *
+	 * @return string $pageName-n
+	 * 
+	 */
+	public function makeUnique($pageName, $parentId = 0) {
+		$names = $this->getSameNameArray($pageName, $parentId);
+		if (empty($names) || !in_array($pageName,$names)) return $pageName;
+		$indexes = array();
+		foreach ($names as $name) {
+			$indexes[] = trim(strrchr($name,'-'),'-');
+		}
+		$newindex = max($indexes)+1;
+		if ($newindex == 1) $newindex = 2;
+		if(strlen($pageName) + strlen($newindex) > self::nameMaxLength) $pageName = substr($pageName, 0, self::nameMaxLength - strlen($newindex));
+		return "$pageName-$newindex";
+	}
+
+}
