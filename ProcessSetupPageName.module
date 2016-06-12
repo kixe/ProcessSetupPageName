@@ -23,17 +23,15 @@ class ProcessSetupPageName extends Pages implements Module {
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Setup Page Name'), 
-			'version' => 113, 
+			'version' => 200, 
 			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings"),
 			'href' => 'https://processwire.com/talk/topic/8576-name-format-children/?p=108748',
 			'author' => 'kixe',
 			'singular' => true,
-			'autoload' => true, 
-			'requires' => 'PHP>=5.4.1'
+			'autoload' => true,
+			'requires' => 'PHP>=5.4.0',
 			);
 	}
-
-	private static $notes;
 
 	/**
 	 * constructor expected by PW 3.x
@@ -51,6 +49,8 @@ class ProcessSetupPageName extends Pages implements Module {
 	 *
 	 */
 	protected $untitledPageName = 'untitled';
+
+	private static $notes;
 
 	/**
 	 * add Hooks to Pages::setupPageName, ProcessTemplate::buildEditForm and InputfieldPageTable::getConfigInputfields
@@ -78,6 +78,9 @@ class ProcessSetupPageName extends Pages implements Module {
 				$event->return = $return;
 			});
 		}
+		if ($this->wire('modules')->isInstalled('LanguageSupportPageNames')) {
+			$this->addHookBefore('Pages::saveReady', $this, 'hookSaveReady');
+		}	
 	}
 
 	/**
@@ -87,10 +90,13 @@ class ProcessSetupPageName extends Pages implements Module {
 	 * @param string $format use dot syntax if value has subfields or is an object
 	 * spaces are detected as separator for properties, fields or date() function
 	 * using space inside date() function will cause an error
+     * @param int $languageID
 	 * 
 	 * @return string/ bool If a name was generated it is returned. false in case of error or warning
 	 */
-	public function createFromFormat(Page $page, $format) {
+	public function createFromFormat(Page $page, $format, $languageID = null) {
+
+		if (!$languageID) $languageID = wire('languages')->getDefault()->id;
 
 		$format = trim($format, " \t\n\r,}{'\"");
 		if (!$format) return false;	
@@ -105,14 +111,16 @@ class ProcessSetupPageName extends Pages implements Module {
 			foreach ($formats as $_format) {
 				$_format = trim($_format, " \t\n\r,}{'\"");
 				if (!strlen($_format)) continue;
-				$_pageName = $this->createFromFormat($page, $_format); 
+				$_pageName = $this->createFromFormat($page, $_format, $languageID); 
 				if ($_pageName == false) return false;
 				$pageName .= '-'.$_pageName;
 			}
 		}
 
 		// case 2: title default
-		else if ($format == 'title' && strlen($page->title)) $pageName .= '-'.$page->title;
+		else if ($format == 'title' && strlen($page->title->getLanguageValue($languageID))) {
+			$pageName .= '-'.$page->title->getLanguageValue($languageID);
+		}
 			
 		// case 3: date()
 		else if (strpos($format, 'date(') === 0 ) {
@@ -130,13 +138,16 @@ class ProcessSetupPageName extends Pages implements Module {
 
 		// case 4: string could be determined with $page->get() we take this
 		else if (strlen($page->get($format))) {
+			$userLang = wire('user')->language;
+			wire('user')->language = wire('languages')->get($languageID);
 			$value = $page->get($format);
-			if (is_int($value) && wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
+			if (is_int($value) && $page->template->hasField($format) && wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
 				$dateOutputFormat = wire('fields')->get($format)->dateOutputFormat;
 				// for now we convert timestamp to format corresponding to field settings (dateOutputFormat) as default
 				$value = date($dateOutputFormat, $value);
-			} 
+			}
 			$pageName .= '-'.$value;
+			wire('user')->language = $userLang;
 		}
 
 		// case 5: check if field or subfield exists, set flag for warning or error and return false
@@ -163,12 +174,13 @@ class ProcessSetupPageName extends Pages implements Module {
 			else $error = true;
 		}			
 
-		// output warning or error
-		$format_error = isset($format_error)?$format_error:$this->_("Error: 'Name Format Children' in settings of template '%s'. Unknown property, field or subfield: '%s'");
-		if ($error === true) $this->error(sprintf($format_error, $page->parent->template->name, $format));
-		$format_warning = $this->_("SetupPageName expects value in field '%s' to autogenerate Pagename");
-		if ($warning === true) $this->warning(sprintf($format_warning, $format));
-
+		// output warning or error only in user language
+		if (wire('user')->language->id == $languageID) {
+			$format_error = isset($format_error)?$format_error:$this->_("Error: 'Name Format Children' in settings of template '%s'. Unknown property, field or subfield: '%s'");
+			if ($error === true) $this->error(sprintf($format_error, $page->parent->template->name, $format));
+			$format_warning = $this->_("SetupPageName expects value in field '%s' to autogenerate Pagename");
+			if ($warning === true) $this->warning(sprintf($format_warning, $format));
+		}
 		if (!$error && !$warning) return ltrim($pageName,'-');
 		return false;
 
@@ -248,28 +260,37 @@ class ProcessSetupPageName extends Pages implements Module {
 		}
 
 		if (strlen($pageName)) {
-			$pageName = $this->wire('sanitizer')->pageName($pageName, Sanitizer::translate);
-			$page->name = $this->makeUnique($pageName);
-			$page->set('_hasAutogenName', true); // for savePageQuery, provides adjustName behavior for new pages		
+			$pageName = $this->sanitizePageName($pageName);
+			$page->name = $this->makeUnique($pageName, $page->parent->id);		
+			$page->set('_hasAutogenName', true); // for savePageQuery, provides adjustName behavior for new pages
 			return $page->name;
 		}
+
 		return '';
 	}
 
 	/**
 	 * 
 	 * @param string $pageName
-	 * @param int $parentId for local search, default global search
+	 * @param int $parentID for local search, default global search
+	 * @param int $languageID
 	 * @return array of Page names in use matching $pageName with integer appendix -n
 	 * 
 	 */
-	public function getSameNameArray($pageName, $parentId = 0) {
-		$local = ($parentId && is_int($parentId))?" parent_id = $parentId AND":'';
-		$sql = "SELECT name FROM pages WHERE$local name REGEXP '^($pageName)(-([[:digit:]]+))?$'";
+	public function getSameNameArray($pageName, $parentID = 0, $languageID = null) {
+		// Page Name Extended which allows UTF8 Page Names doesn't work properly!
+		// first letter get cutted away of each item ???
+		// $pageName = mb_convert_encoding($pageName,'ASCII');
+		if ($languageID) {
+			if (!wire('languages')->get($languageID)->id) throw new WireException("Cannot find language with ID $languageID");
+			else if (wire('languages')->get($languageID)->isDefault()) $languageID = null;
+		}
+		$local = ($parentID && is_int($parentID))?" parent_id = $parentID AND":'';
+		$sql = "SELECT name$languageID FROM pages WHERE$local name$languageID REGEXP '^($pageName)(-([[:digit:]]+))?$'";
 		$query = wire('database')->prepare($sql);
-		$result = $this->executeQuery($query);
-		if (!$result) return false;
-		return $query->fetchAll(PDO::FETCH_COLUMN);
+		$this->executeQuery($query);
+		$result = $query->fetchAll(PDO::FETCH_COLUMN);
+		return $result;
 	}
 
 	/**
@@ -277,13 +298,13 @@ class ProcessSetupPageName extends Pages implements Module {
 	 * index -n will be highest index of similar named pages +1
 	 * 
 	 * @param string $pageName
-	 * @param int $parentId (uniquify locally under this parent)
-	 *
+	 * @param int $parentID (uniquify locally under this parent)
+	 * @param int $languageID
 	 * @return string $pageName-n
 	 * 
 	 */
-	public function makeUnique($pageName, $parentId = 0) {
-		$names = $this->getSameNameArray($pageName, $parentId);
+	public function makeUnique($pageName, $parentID = 0, $languageID = null) {
+		$names = $this->getSameNameArray($pageName, $parentID, $languageID);
 		if (empty($names) || !in_array($pageName,$names)) return $pageName;
 		$indexes = array();
 		foreach ($names as $name) {
@@ -295,4 +316,40 @@ class ProcessSetupPageName extends Pages implements Module {
 		return "$pageName-$newindex";
 	}
 
+	/**
+	 * Sanitize page name
+	 * @param string $pagename
+	 * @return string $pagename
+	 */
+	public function sanitizePageName($pageName) {
+		if($this->wire('config')->pageNameCharset === 'UTF8') {
+			$pageName = $this->wire('sanitizer')->pageNameUTF8($pageName);
+		} else {
+			$pageName = $this->wire('sanitizer')->pageName($pageName, Sanitizer::translate);
+		}	
+		return $pageName;
+	}
+
+	/**
+	 * hook to assign language specific names
+	 * run only if not already set (NULL) AND Inputfield _pw_page_name is cleared/empty
+	 * 
+	 */
+    public function hookSaveReady($event) {
+    	$page = $event->arguments[0];
+    	$format = $page->parent()->template->childNameFormat;
+    	if (!strlen($format)) return;
+		$SetupPageName = wire('modules')->get('ProcessSetupPageName');
+		foreach (wire('languages') as $language) {
+			if ($language->isDefault()) continue;
+			$pageLangName = $SetupPageName->sanitizePageName(wire('input')->post->{"_pw_page_name$language->id"});
+			if (strpos($pageLangName, $SetupPageName->untitledPageName) !== 0 && $pageLangName == $page->name) continue;
+			if ($page->{"name".$language->id}) continue;
+			$pageLangName = $SetupPageName->createFromFormat($page, $format, $language->id);
+			if (!$pageLangName) continue;
+			$pageLangName = $SetupPageName->sanitizePageName($pageLangName);
+			$pageLangName = $SetupPageName->makeUnique($pageLangName, $page->parent->id, $language->id);
+			$page->{"name".$language->id} = $pageLangName;
+		}
+	}
 }
