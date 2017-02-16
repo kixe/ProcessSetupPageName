@@ -403,6 +403,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
         $f = $modules->get('InputfieldCheckbox');
 		$f->attr('name', 'updatePageName'); 
 		$f->label = __('Update the name of existing pages if the values of the selected fields from which the name is generated have been changed.'); 
+		$f->notes = __('Use this option with caution, because it has the potential to break links.');
         $f->attr('checked', $data['updatePageName'] ? 'checked' : '' );
 		$fields->add($f);
 
