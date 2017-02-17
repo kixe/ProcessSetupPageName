@@ -13,6 +13,7 @@
  *
  * @version 2.0.2
  * @since 2.0.2 2017-02-15 configurable option allows to update existing pages if field values have been changed
+ * @todo disable _pw_page_name field under settings tab if updatePageName is enabled
  *
  */
 
@@ -21,7 +22,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Setup Page Name'), 
-			'version' => 202, 
+			'version' => 203, 
 			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings"),
 			'href' => 'https://processwire.com/talk/topic/8576-name-format-children/?p=108748',
 			'author' => 'kixe',
@@ -74,12 +75,12 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	 * 
 	 *
 	 */
-	public function init() {
+	public function init() {	
 		$this->addHookBefore('Pages::setupPageName', function($event) {
 			$page = $event->arguments[0];
 			$event->replace = true;
 			$options = count($event->arguments)==2?$event->arguments[1]:array();
-			$name = wire('modules')->get('ProcessSetupPageName')->SetupPageName($page, $options);
+			$name = $this->wire('modules')->get('ProcessSetupPageName')->SetupPageName($page, $options);
     		$event->return = $name;
 		});
 		self::$notes = $this->_('Leave blank to disable. Enter any fieldname, subfield, property or date() function separated by space. Dot syntax allowed. Example: \'parent.title date(Y) myfield\' (without quotes) will auto-generate the name from the title of page parent, the current year and the value of pagefield \'myfield\' [More](https://processwire.com/talk/topic/8576-name-format-children/?p=108748)');	
@@ -88,15 +89,15 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 			$return->children()->get(2)->children()->first()->children()->get('childNameFormat')->set('notes',self::$notes);
 			$event->return = $return;
 		});
-		if (wire('modules')->isInstalled('InputfieldPageTable')) {
+		if ($this->wire('modules')->isInstalled('InputfieldPageTable')) {
 			$this->addHookAfter('InputfieldPageTable::getConfigInputfields', function($event) {
 				$return = $event->return;
 				$return->children()->get('nameFormat')->set('notes',self::$notes);
 				$event->return = $return;
 			});
 		}
-		if ($this->wire('modules')->isInstalled('LanguageSupportPageNames')) {
-			$this->languageSupport = true;
+		if ($this->wire('modules')->isInstalled('LanguageSupportPageNames')||$this->updatePageName) {
+			if ($this->wire('modules')->isInstalled('LanguageSupportPageNames')) $this->languageSupport = true;
 			$this->addHookBefore('Pages::saveReady', $this, 'hookSaveReady');
 		}	
 	}
@@ -114,7 +115,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	 */
 	public function createFromFormat(Page $page, $format, $languageID = null) {
 
-		if ($languageID == null && $this->languageSupport == true) $languageID = wire('languages')->getDefault()->id;
+		if ($languageID == null && $this->languageSupport == true) $languageID = $this->wire('languages')->getDefault()->id;
 
 		$format = trim($format, " \t\n\r,}{'\"");
 		if (!$format) return false;	
@@ -162,18 +163,18 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 		// case 4: string could be determined with $page->get() we take this
 		else if (strlen($page->get($format))) {
 			if ($this->languageSupport) {
-				$userLang = wire('user')->language;
-				wire('user')->language = wire('languages')->get($languageID);
+				$userLang =$this->wire('user')->language;
+				$this->wire('user')->language = $this->wire('languages')->get($languageID);
 			}
 			if (wire('fields')->get($format)->type instanceof FieldtypeOptions) $value = $page->get($format)->title;
 			else $value = $page->get($format);
-			if (is_int($value) && $page->template->hasField($format) && wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
-				$dateOutputFormat = wire('fields')->get($format)->dateOutputFormat;
+			if (is_int($value) && $page->template->hasField($format) && $this->wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
+				$dateOutputFormat = $this->wire('fields')->get($format)->dateOutputFormat;
 				// for now we convert timestamp to format corresponding to field settings (dateOutputFormat) as default
 				$value = date($dateOutputFormat, $value);
 			}
 			$pageName .= '-'.$value;
-			if ($this->languageSupport) wire('user')->language = $userLang;
+			if ($this->languageSupport) $this->wire('user')->language = $userLang;
 		}
 
 		// case 5: no value. check if field or subfield exists, set flag for warning or error and return false
@@ -185,7 +186,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 				if (count($_format) == 1) $warning = true;
 				// field has subfields
 				else if (count($_format) == 2) {
-					$field = wire('fields')->get($_format[0]);
+					$field = $this->wire('fields')->get($_format[0]);
 					$info = $field->type->getSelectorInfo($field);
 					$subfields = array_keys($info['subfields']);
 					if (!in_array($_format[1],$subfields)) $error = true;
@@ -201,7 +202,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 		}			
 
 		// output warning or error only in user language
-		if ($this->languageSupport == false || wire('user')->language->id == $languageID) {
+		if ($this->languageSupport == false || $this->wire('user')->language->id == $languageID) {
 			$format_error = isset($format_error)?$format_error:$this->_("Error: 'Name Format Children' in settings of template '%s'. Unknown property, field or subfield: '%s'");
 			if ($error === true) $this->error(sprintf($format_error, $page->parent->template->name, $format));
 			$format_warning = $this->_("SetupPageName expects value in field '%s' to autogenerate Pagename");
@@ -304,20 +305,20 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	 * @return array (key=id) of Page names in use matching $pageName with integer appendix -n except page with id $pageID
 	 * 
 	 */
-	public function getSameNameArray($pageName, $excludeID = 0, $parentID = 0, $languageID = null) {
+	protected function getSameNameArray($pageName, $excludeID = 0, $parentID = 0, $languageID = null) {
 		// Page Name Extended which allows UTF8 Page Names doesn't work properly!
 		// first letter get cutted away of each item ???
 		// $pageName = mb_convert_encoding($pageName,'ASCII');
 		if ($languageID) {
-			if (!wire('languages')->get($languageID)->id) throw new WireException("Cannot find language with ID $languageID");
-			else if (wire('languages')->get($languageID)->isDefault()) $languageID = null;
+			if (!$this->wire('languages')->get($languageID)->id) throw new WireException("Cannot find language with ID $languageID");
+			else if ($this->wire('languages')->get($languageID)->isDefault()) $languageID = null;
 		}
 		$local = ($parentID && is_int($parentID))? " parent_id = $parentID AND":'';
 		$id = ($excludeID && is_int($excludeID))? " id != $excludeID AND":'';
 		$sql = "SELECT id,name$languageID FROM pages WHERE$local$id name$languageID REGEXP '^($pageName)(-([[:digit:]]+))?$' COLLATE utf8_general_ci";
 		try {
-			$query = wire('database')->prepare($sql);
-			wire('database')->execute($query, true, 2);
+			$query = $this->wire('database')->prepare($sql);
+			$this->wire('database')->execute($query, true, 2);
 			$result = $query->fetchAll(PDO::FETCH_KEY_PAIR);
 		} catch (Exception $e) {
 			$this->error($e);
@@ -337,7 +338,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	 * @return string $pageName-n
 	 * 
 	 */
-	public function makeUnique($pageName, $pageID = 0, $parentID = 0, $languageID = null) {
+	protected function makeUnique($pageName, $pageID = 0, $parentID = 0, $languageID = null) {
 		$names = $this->getSameNameArray($pageName, $pageID, $parentID, $languageID);
 		if (empty($names)) return $pageName;
 		$indexes = array(1);
@@ -360,31 +361,53 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 			$pageName = $this->wire('sanitizer')->pageNameUTF8($pageName);
 		} else {
 			$pageName = $this->wire('sanitizer')->pageName($pageName, Sanitizer::translate);
-		}	
+		}
 		return $pageName;
 	}
 
 	/**
-	 * hook to assign language specific names
-	 * run only if not already set (NULL) AND Inputfield _pw_page_name is cleared/empty
+	 * hook to assign language specific names and/ or update page name
+	 * run only if property updatePageName is set to 1 OR
+	 * values for page name not already set (NULL) AND Inputfield _pw_page_name is cleared/empty
 	 * 
 	 */
     public function hookSaveReady($event) {
     	$page = $event->arguments[0];
     	$format = $page->parent()->template->childNameFormat;
     	if (!strlen($format)) return;
-		$SetupPageName = wire('modules')->get('ProcessSetupPageName');
-		foreach (wire('languages') as $language) {	
-			if (!$this->data['updatePageName'] && $language->isDefault()) continue;
-			$languageID = $language->isDefault()? null: $language->id;
-			$pageLangName = $SetupPageName->sanitizePageName(wire('input')->post->{"_pw_page_name$languageID"});
-			if (!$this->data['updatePageName'] && strpos($pageLangName, $SetupPageName->untitledPageName) !== 0) continue;
-			if (!$this->data['updatePageName'] && $page->{"name".$languageID}) continue;
-			$pageLangName = $SetupPageName->createFromFormat($page, $format, $languageID);
-			if (!$pageLangName) continue; // couldn't create a language specific name from format
-			$pageLangName = $SetupPageName->makeUnique($pageLangName, $page->id, $page->parent->id, $languageID);
-			$page->{"name".$languageID} = $pageLangName;
+		$SetupPageName = $this->wire('modules')->get('ProcessSetupPageName');
+		if ($SetupPageName->languageSupport) {
+			foreach ($this->wire('languages') as $language) {	
+				if (!$this->data['updatePageName'] && $language->isDefault()) continue;
+				$languageID = $language->isDefault()? null: $language->id;
+				$pageLangName = $SetupPageName->updatePageName($page, $format, $languageID);
+				if (!$pageLangName) continue;
+				$page->{"name".$languageID} = $pageLangName;
+			}
+		} else {
+			$pageLangName = $SetupPageName->updatePageName($page, $format);
+			if ($pageLangName) $page->name = $pageLangName;
 		}
+	}
+
+	/**
+     * Return an unique page name or false on fail
+     *
+     * @param object $page
+     * @param string $format
+     * @param int/ string $languageID
+     * @return bool/ string
+     *
+     */
+	protected function updatePageName($page, $format, $languageID = null) {
+		$pageLangName = $this->sanitizePageName($this->wire('input')->post->{"_pw_page_name$languageID"});
+		if (!$this->updatePageName && strpos($pageLangName, $this->untitledPageName) !== 0) return false;
+		if (!$this->updatePageName && $page->{"name".$languageID}) return false;
+		$pageLangName = $this->createFromFormat($page, $format, $languageID);
+		if (!$pageLangName) return false; // couldn't create a language specific name from format
+		$pageLangName = $this->sanitizePageName($pageLangName);
+		$pageLangName = $this->makeUnique($pageLangName, $page->id, $page->parent->id, $languageID);
+		return $pageLangName;
 	}
 
 	/**
