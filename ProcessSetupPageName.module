@@ -170,9 +170,8 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 			if (wire('fields')->get($format)->type instanceof FieldtypeOptions) $value = $page->get($format)->title;
 			else $value = $page->get($format);
 			if (is_int($value) && $page->template->hasField($format) && $this->wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
-				// $value = $page->value;
+				// we convert timestamp to format corresponding to field settings (dateOutputFormat) as default
 				$dateOutputFormat = $this->wire('fields')->get($format)->dateOutputFormat;
-				// for now we convert timestamp to format corresponding to field settings (dateOutputFormat) as default
 				$value = FieldtypeDatetime::formatDate($value, $dateOutputFormat);
 			}
 			$pageName .= '-'.$value;
