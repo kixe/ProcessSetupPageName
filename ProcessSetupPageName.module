@@ -175,8 +175,10 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 				// we convert timestamp to format corresponding to field settings: dateOutputFormat (language sensitive)
 				$dateOutputFormat = ($this->languageSupport && !$this->wire('user')->language->isDefault())? $this->wire('fields')->get($format)->{"dateOutputFormat".$this->wire('user')->language} : $this->wire('fields')->get($format)->dateOutputFormat;
 				// aware of LanguageSupport::_('C') translations
-				setlocale(LC_ALL , $this->wire('user')->language->getLocale());
+				$locale = setlocale(LC_TIME, 0); // get current locale
+				setlocale(LC_TIME , $this->wire('user')->language->getLocale());
 				$value = WireDateTime::formatDate($value, $dateOutputFormat);
+				setlocale(LC_TIME, $locale); // reset locale
 			}
 			$pageName .= '-'.$value;
 			if ($this->languageSupport) $this->wire('user')->language = $userLang;
