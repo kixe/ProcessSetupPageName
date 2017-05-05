@@ -11,10 +11,11 @@
  * 
  * http://processwire.com
  *
- * @version 2.0.5
+ * @version 2.0.6
  * @since 2.0.2 2017-02-15 configurable option allows to update existing pages if field values have been changed
  * @since 2.0.4 2017-05-05 use datetime field output format according to field settings (allow strftime format)
  * @since 2.0.5 2017-05-05 aware of LanguageSupport::_(‚C‘) translations and dateOutputFormat (language sensitive) in datetime fields
+ * @since 2.0.6 2017-05-05 in case of FieldtypeOptions pull pagename from value OR title if no value available
  * @todo disable _pw_page_name field under settings tab if updatePageName is enabled
  *
  */
@@ -24,7 +25,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Setup Page Name'), 
-			'version' => 205, 
+			'version' => 206, 
 			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings"),
 			'href' => 'https://processwire.com/talk/topic/8576-name-format-children/?p=108748',
 			'author' => 'kixe',
@@ -169,7 +170,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 				$userLang =$this->wire('user')->language;
 				$this->wire('user')->language = $this->wire('languages')->get($languageID);
 			}
-			if (wire('fields')->get($format)->type instanceof FieldtypeOptions) $value = $page->get($format)->title;
+			if (wire('fields')->get($format)->type instanceof FieldtypeOptions) $value = $page->get($format)->get('value|title');
 			else $value = $page->get($format);
 			if (is_int($value) && $page->template->hasField($format) && $this->wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
 				// we convert timestamp to format corresponding to field settings: dateOutputFormat (language sensitive)
