@@ -17,7 +17,7 @@
  * @since 2.0.5 2017-05-05 aware of LanguageSupport::_(‚C‘) translations and dateOutputFormat (language sensitive) in datetime fields
  * @since 2.0.6 2017-05-05 in case of FieldtypeOptions pull pagename from value OR title if no value available
  * @since 2.0.7 2017-05-06 use Languages::setLocale() instead of PHP::setlocale()
- * @since 2.0.8 2017-05-06 fixed issue: call of Languages::setLocale() in single language environment
+ * @since 2.0.8 2017-05-06 fixed issue: call of Languages::setLocale() in single language environment and fallback to default language title
  * @todo disable _pw_page_name field under settings tab if updatePageName is enabled
  *
  */
@@ -144,12 +144,10 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 
 		// case 2: title default
 		else if ($format == 'title') {
-			if (!$this->languageSupport) {
-				$pageName .= '-'.$page->title;
-			}
-			else if (strlen($page->getLanguageValue($languageID, 'title'))) {
+			if ($this->languageSupport && strlen($page->getLanguageValue($languageID, 'title'))) {
 				$pageName .= '-'.$page->getLanguageValue($languageID, 'title');
 			}
+			else $pageName .= '-'.$page->title;
 		}
 			
 		// case 3: date()
