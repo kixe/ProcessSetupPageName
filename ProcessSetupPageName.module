@@ -11,7 +11,7 @@
  * 
  * http://processwire.com
  *
- * @version 2.1.0
+ * @version 2.1.1
  * @since 2.0.2 2017-02-15 configurable option allows to update existing pages if field values have been changed
  * @since 2.0.4 2017-05-05 use datetime field output format according to field settings (allow strftime format)
  * @since 2.0.5 2017-05-05 aware of LanguageSupport::_(‚C‘) translations and dateOutputFormat (language sensitive) in datetime fields
@@ -20,6 +20,7 @@
  * @since 2.0.8 2017-05-06 fixed issue: call of Languages::setLocale() in single language environment and fallback to default language title
  * @since 2.0.9 2017-08-14 fixed issue: changed call of WireDateTime::formatDate() from static to procedural
  * @since 2.1.0 2018-03-19 prevent notice if field doesn't exist in page template line:175
+ * @since 2.1.1 2018-10-25 fixed issue: getting title of options field in multilanguage environment
  * @todo disable _pw_page_name field under settings tab if updatePageName is enabled
  *
  */
@@ -29,7 +30,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Setup Page Name'), 
-			'version' => 210, 
+			'version' => 211, 
 			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings"),
 			'href' => 'https://processwire.com/talk/topic/8576-name-format-children/?p=108748',
 			'author' => 'kixe',
@@ -169,10 +170,10 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 		// case 4: string could be determined with $page->get() we take this
 		else if (strlen($page->get($format))) {
 			if ($this->languageSupport) {
-				$userLang =$this->wire('user')->language;
+				$userLang = $this->wire('user')->language;
 				$this->wire('user')->language = $this->wire('languages')->get($languageID);
 			}
-			if (wire('fields')->get($format) && wire('fields')->get($format)->type instanceof FieldtypeOptions) $value = $page->get($format)->get('value|title');
+			if (wire('fields')->get($format) && wire('fields')->get($format)->type instanceof FieldtypeOptions) $value = $page->get($format)->getLanguageValue($languageID, 'value|title');
 			else $value = $page->get($format);
 			if (is_int($value) && $page->template->hasField($format) && $this->wire('fields')->get($format)->type instanceof FieldtypeDatetime) {
 				// we convert timestamp to format corresponding to field settings: dateOutputFormat (language sensitive)
