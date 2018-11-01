@@ -22,6 +22,7 @@
  * @since 2.1.0 2018-03-19 prevent notice if field doesn't exist in page template line:175
  * @since 2.1.1 2018-10-25 fixed issue: getting title of options field in multilanguage environment, added fallback to default language for datetime of
  * @since 2.1.2 2018-10-31 fixed issue: fieldtype options
+ * @since 2.1.3 2018-11-01 added support for array values and options fieldtype if dotsyntax is used (e.g. fieldname.title)
  * @todo disable _pw_page_name field under settings tab if updatePageName is enabled
  *
  */
@@ -31,7 +32,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Setup Page Name'), 
-			'version' => 212, 
+			'version' => 213, 
 			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings"),
 			'href' => 'https://processwire.com/talk/topic/8576-name-format-children/?p=108748',
 			'author' => 'kixe',
@@ -125,7 +126,12 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	public function createFromFormat(Page $page, $format, $languageID = null) {
 
 		if ($languageID == null && $this->languageSupport == true) $languageID = $this->wire('languages')->getDefault()->id;
+		$langID = $this->wire('languages')->get($languageID)->isDefault()? null : $languageID;
 
+		if ($this->languageSupport) {
+			$userLang = $this->wire('user')->language;
+			$this->wire('user')->language = $this->wire('languages')->get($languageID);
+		}
 
 		$format = trim($format, " \t\n\r,}{'\"");
 		if (!$format) return false;	
@@ -168,17 +174,19 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 			}
 		}
 
-		// case 4: string could be determined with $page->get() we take this
+		// case 4: value is array
+		else if (is_array($page->get($format))) {
+			$langValue = $page->get($format.$langID);
+			$value = implode('-', is_array($langValue) && count($langValue)? $langValue : $page->get($format));
+			$pageName .= '-' . $value;
+		}
+
+		// case 5: string could be determined with $page->get() we take this
 		else if (strlen($page->get($format))) {
-			if ($this->languageSupport) {
-				$userLang = $this->wire('user')->language;
-				$this->wire('user')->language = $this->wire('languages')->get($languageID);
-			}
 			if (wire('fields')->get($format) && wire('fields')->get($format)->type instanceof FieldtypeOptions && $num = $page->get($format)->count) {
-				$langID = $this->wire('languages')->get($languageID)->isDefault()? null : $languageID;
-				if ($num == 1) $value = $page->get($format)->first()->get("value$langID|title$langID");
+				if ($num == 1) $value = $page->get($format)->first()->get("value$langID|title$langID|value|title");
 				else {
-					$value = implode('-', $page->get($format)->each("value$langID|title$langID"));
+					$value = implode('-', $page->get($format)->each("value$langID|title$langID|value|title"));
 				}
 			}
 			else $value = $page->get($format);
@@ -194,14 +202,13 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 				if ($this->languageSupport) setlocale(LC_TIME, $locale); // reset locale
 			}
 			$pageName .= '-'.$value;
-			if ($this->languageSupport) $this->wire('user')->language = $userLang;
 		}
 
-		// case 5: no value. check if field or subfield exists, set flag for warning or error and return false
+		// case 6: no value. check if field or subfield exists, set flag for warning or error and return false
 		else {
-			if (strpos($format,'.')) $_format = explode('.',$format);
+			if (strpos($format,'.')) $_format = array_filter(explode('.',$format));
 			else $_format = array($format);
-			if($page->template->hasField($_format[0])) {
+			if($page->template->hasField($_format[0])) {				
 				// one or more field values not populated
 				if (count($_format) == 1) $warning = true;
 				// field has subfields
@@ -222,15 +229,15 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 		}			
 
 		// output warning or error only in user language
-		if ($this->languageSupport == false || $this->wire('user')->language->id == $languageID) {
-			$format_error = isset($format_error)?$format_error:$this->_("Error: 'Name Format Children' in settings of template '%s'. Unknown property, field or subfield: '%s'");
+		if ($this->languageSupport == false || $userLang->id == $languageID) {
+			$format_error = isset($format_error)? $format_error : $this->_("Error: 'Name Format Children' in settings of template '%s'. Unknown property, field or subfield: '%s'");
 			if ($error === true) $this->error(sprintf($format_error, $page->parent->template->name, $format));
 			$format_warning = $this->_("SetupPageName expects value in field '%s' to autogenerate Pagename");
 			if ($warning === true) $this->warning(sprintf($format_warning, $format));
 		}
+		if ($this->languageSupport) $this->wire('user')->language = $userLang;
 		if (!$error && !$warning) return ltrim($pageName,'-');
 		return false;
-
 	}
 
 	/**
