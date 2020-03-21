@@ -11,7 +11,7 @@
  * 
  * http://processwire.com
  *
- * @version 2.1.1
+ * @version 2.1.4
  * @since 2.0.2 2017-02-15 configurable option allows to update existing pages if field values have been changed
  * @since 2.0.4 2017-05-05 use datetime field output format according to field settings (allow strftime format)
  * @since 2.0.5 2017-05-05 aware of LanguageSupport::_(‚C‘) translations and dateOutputFormat (language sensitive) in datetime fields
@@ -23,6 +23,7 @@
  * @since 2.1.1 2018-10-25 fixed issue: getting title of options field in multilanguage environment, added fallback to default language for datetime of
  * @since 2.1.2 2018-10-31 fixed issue: fieldtype options
  * @since 2.1.3 2018-11-01 added support for array values and options fieldtype if dotsyntax is used (e.g. fieldname.title)
+ * @since 2.1.4 2020-03-21 fixed bug mentioned in forum https://processwire.com/talk/topic/8576-name-format-children/?do=findComment&comment=188014
  * @todo disable _pw_page_name field under settings tab if updatePageName is enabled
  *
  */
@@ -32,7 +33,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	public static function getModuleInfo() {
 		return array(
 			'title' => __('Setup Page Name'), 
-			'version' => 213, 
+			'version' => 214, 
 			'summary' => __("Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings"),
 			'href' => 'https://processwire.com/talk/topic/8576-name-format-children/?p=108748',
 			'author' => 'kixe',
@@ -125,10 +126,10 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	 */
 	public function createFromFormat(Page $page, $format, $languageID = null) {
 
-		if ($languageID == null && $this->languageSupport == true) $languageID = $this->wire('languages')->getDefault()->id;
-		$langID = $this->wire('languages')->get($languageID)->isDefault()? null : $languageID;
-
+		$langID = null;
 		if ($this->languageSupport) {
+			if ($languageID == null) $languageID = $this->wire('languages')->getDefault()->id;
+			$langID = $this->wire('languages')->get($languageID)->isDefault()? null : $languageID;
 			$userLang = $this->wire('user')->language;
 			$this->wire('user')->language = $this->wire('languages')->get($languageID);
 		}
