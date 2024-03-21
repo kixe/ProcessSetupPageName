@@ -401,6 +401,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 	 */
     public function hookSaveReady($event) {
     	$page = $event->arguments[0];
+		if ($page->parent() instanceof NullPage) return; // intermittent page move
     	$format = $page->parent()->template->childNameFormat;
     	if (!strlen($format)) return;
 		$SetupPageName = $this->wire('modules')->get('ProcessSetupPageName');
