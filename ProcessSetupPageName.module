@@ -344,7 +344,7 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 		}
 		$local = ($parentID && is_int($parentID))? " parent_id = $parentID AND":'';
 		$id = ($excludeID && is_int($excludeID))? " id != $excludeID AND":'';
-		$sql = "SELECT id,name$languageID FROM pages WHERE$local$id name$languageID REGEXP '^($pageName)(-([[:digit:]]+))?$' COLLATE utf8_general_ci";
+		$sql = "SELECT id,name$languageID FROM pages WHERE$local$id name$languageID REGEXP '^($pageName)(-([[:digit:]]+))?$'";
 		try {
 			$query = $this->wire('database')->prepare($sql);
 			$this->wire('database')->execute($query, true, 2);
