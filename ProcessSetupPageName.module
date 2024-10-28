@@ -1,4 +1,4 @@
-<?php
+<?php namespace ProcessWire;
 
 /**
  * 
@@ -348,8 +348,8 @@ class ProcessSetupPageName extends Process implements Module, ConfigurableModule
 		try {
 			$query = $this->wire('database')->prepare($sql);
 			$this->wire('database')->execute($query, true, 2);
-			$result = $query->fetchAll(PDO::FETCH_KEY_PAIR);
-		} catch (Exception $e) {
+			$result = $query->fetchAll(\PDO::FETCH_KEY_PAIR);
+		} catch (\Exception $e) {
 			$this->error($e);
 			return array();
 		}
