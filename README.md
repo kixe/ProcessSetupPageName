@@ -1,6 +1,32 @@
 PROCESS SETUP PAGE NAME
 =======================
 
+
+## No Longer Maintained
+This repository is no longer maintained as it has been fully implemented in ProcessWire core.
+
+```
+@see core classes
+Pages::setupPageName()
+PagesEditor::setupPageName()
+PagesNames::pageNameFromFormat()
+```
+
+#### [
+## No Longer Maintained
+This repository is no longer maintained as it has been fully implemented in ProcessWire core.
+
+```
+@see core classes
+Pages::setupPageName()
+PagesEditor::setupPageName()
+PagesNames::pageNameFromFormat()
+```
+
+#### [https://processwire.com/api/ref/pages-names/page-name-from-format](https://processwire.com/api/ref/pages-names/page-name-from-format/)
+
+---
+
 Overwrites function setupPageName() in class Pages (core), which is typically called in case of autogeneration of pages. Provides more options for 'Name Format Children' in parent template settings. [More](https://processwire.com/talk/topic/8576-name-format-children/?p=108748)
 
 ## Changelog
