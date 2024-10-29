@@ -12,17 +12,6 @@ PagesEditor::setupPageName()
 PagesNames::pageNameFromFormat()
 ```
 
-#### [
-## No Longer Maintained
-This repository is no longer maintained as it has been fully implemented in ProcessWire core.
-
-```
-@see core classes
-Pages::setupPageName()
-PagesEditor::setupPageName()
-PagesNames::pageNameFromFormat()
-```
-
 #### [https://processwire.com/api/ref/pages-names/page-name-from-format](https://processwire.com/api/ref/pages-names/page-name-from-format/)
 
 ---
